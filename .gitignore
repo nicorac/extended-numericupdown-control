@@ -1,0 +1,7 @@
+*.suo
+*.cache
+*.zip
+*.dll
+*.exe
+[Dd]ebug
+[Rr]elease

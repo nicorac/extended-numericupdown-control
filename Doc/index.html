@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <title>NumericUpDownEx documentation</title>
+</head>
+<body>
+<!--
+HTML for article "Extended NumericUpDown control" by Claudio Nicora
+URL: http://www.codeproject.com/KB/edit/NumericUpDownEx.aspx
+Copyright 2008 by Claudio Nicora
+All formatting, additions and alterations Copyright © CodeProject, 1999-2010
+-->
+
+<p>This control appeared on <a href="http://www.codeproject.com/Articles/30899/Extended-NumericUpDown-Control">CodeProject</a>.
+
+<p><img height="315" src="img/main.jpg" width="497" /></p>
+
+<h2>Introduction</h2>
+
+<p>If you have ever written a data-entry application, there's a big chance you used the <code>NumericUpDown</code> control. This control is great to provide a field to enter numeric values, with advanced features like up-down buttons and accelerating auto-repeat.</p>
+
+<p>The other side of the coin is that <code>NumericUpDown</code> is not really mouse-aware. I experienced some bugs and bad behaviors:</p>
+
+<ul>
+<li>I need to select all the text when it gets focus (see below), but it misses some of the <code>TextBox</code> properties, like <code>SelectedText</code>, <code>SelectionStart</code>, <code>SelectionLength</code> (an <code>AutoSelect</code> property will be useful).</li>
+
+<li>Some of the standard events are not working properly (see below): <code>MouseEnter</code>, <code>MouseLeave</code>.</li>
+
+<li>Rotating the mouse wheel when the control is focused causes its value to change. A property to change this behavior, like <code>InterceptArrowsKeys</code> for up/down keys, will be useful.</li>
+</ul>
+
+<p>That's why I decided to subclass it, fixing these points and adding missing features and properties.</p>
+
+<h2>Missing TextBox properties</h2>
+
+<p>I needed some missing <code>TextBox</code> properties when I was asked to select all the text in the control when it got the focus.</p>
+Yes, <code>NumericUpDown</code> exposes a <code lang="cs">Select(int Start, int Lenght)</code> method you can call to select all text. At first try, I attached to the <code>GotFocus</code> event to call <code>Select(0, x)</code> but, hey, wait a moment... what should I use for x? It seems that any value is accepted, even if greater than the text length. OK, let's say x=100 and proceed. This works well with the keyboard focus keys (like TAB), but it's completely useless with the mouse: a mouse click raises the <code>GotFocus</code> event (where I select all the text), but as soon as you release the button, a zero-selection is done, leaving the control with no selection. OK, I thought, let's add a <code>SelectAll</code> on the <code>MouseUp</code> event too, but this way, the user cannot perform a partial selection anymore; each time the mouse button is released, all the text is selected. I need to know if a partial selection exists; in a <code>TextBox</code>, I can test it with <code>SelectionLength &gt; 0</code>, so I need to access the underlying <code>TextBox</code> control.
+
+<p />
+
+<p>Now comes the tricky part: <code>NumericUpDown</code> is a composite control, a <code>TextBox</code> and a button box. Looking inside it through the Reflector, we can find the internal field which holds the textbox part:</p>
+
+<pre lang="vbnet">Friend upDownEdit As UpDownEdit  ' UpDownEdit inherits from TextBox</pre>
+
+<p>We'll obtain a reference to this field using Reflection; this is done in the control creator.</p>
+
+<pre lang="vbnet">''' &lt;summary&gt;
+''' object creator
+''' &lt;/summary&gt;
+Public Sub New()
+    MyBase.New()
+    ' extract a reference to the underlying TextBox field
+    _textbox = GetPrivateField(Me)
+    If _textbox Is Nothing Then
+        Throw New ArgumentNullException(Me.GetType.FullName _
+                &amp; &quot;: Can't find internal TextBox field.&quot;)
+    End If
+    ' ...
+End Sub
+
+
+''' &lt;summary&gt;
+''' Extracts a reference to the private underlying textbox field
+''' &lt;/summary&gt;
+Private Shared Function GetPrivateField _
+                    (ByVal ctrl As NumericUpDownEx) As TextBox
+    ' find internal TextBox
+    Dim textFieldInfo As Reflection.FieldInfo _
+        = GetType(NumericUpDown).GetField(&quot;upDownEdit&quot;, _
+                    Reflection.BindingFlags.FlattenHierarchy _
+                    Or Reflection.BindingFlags.NonPublic _
+                    Or Reflection.BindingFlags.Instance)
+    ' take some caution... they could change field name
+    ' in the future!
+    If textFieldInfo Is Nothing Then
+        Return Nothing
+    Else
+        Return TryCast(textFieldInfo.GetValue(ctrl), TextBox)
+    End If
+End Function</pre>
+
+<p>Now that we have the underlying <code>TextBox</code>, it is possible to export some missing properties:</p>
+
+<pre lang="vbnet">&lt;Browsable(False)&gt; _
+&lt;DesignerSerializationVisibility( _
+     DesignerSerializationVisibility.Hidden)&gt; _
+Public Property SelectionStart() As Integer
+    Get
+        Return _textbox.SelectionStart
+    End Get
+    Set(ByVal value As Integer)
+        _textbox.SelectionStart = value
+    End Set
+End Property</pre>
+
+<p>And finally, we can have a perfectly working mouse management:</p>
+
+<pre lang="vbnet">' MouseUp will kill the SelectAll made on GotFocus.
+' Will restore it, but only if user have not made
+' a partial text selection.
+Protected Overrides Sub OnMouseUp(ByVal mevent As MouseEventArgs)
+    If _autoSelect AndAlso _textbox.SelectionLength = 0 Then
+        _textbox.SelectAll()
+    End If
+    MyBase.OnMouseUp(mevent)
+End Sub</pre>
+
+<h2>Mouse events not raised properly</h2>
+
+<p>The original <code>MouseEnter</code> and <code>MouseLeave</code> events are raised in couples: a <code>MouseEnter</code> immediately followed by a <code>MouseLeave</code>. Maybe that's why, to discourage their use, they are marked with a <code lang="vbnet">&lt;Browsable(False)&gt;</code> attribute. Since I need the <code>MouseEnter</code> event to update my <code>StatusBar</code> caption, I investigated a little on this &quot;bug&quot;.</p>
+
+<p>As said above, <code>NumericUpDown</code> is a composite control (red rectangle in the following picture) containing a <code>TextBox</code> (left green rectangle) and some other controls:</p>
+
+<p><img height="104" src="img/zoom.jpg" width="188" /></p>
+
+<p>The &quot;control&quot; area is the one between the red and the green rectangles; when you fly over it with the mouse, you'll receive the <code>MouseEnter</code> event while between the red and the green, then <code>MouseLeave</code> when inside the green rectangle. The same happens when you leave.</p>
+
+<p>The better way to raise these events, now that we can access the underlying <code>TextBox</code>, is to re-raise the <code>MouseEnter</code> and <code>MouseLeave</code> events as raised from the <code>TextBox</code> itself; this is what <code>NumericUpDownEx</code> does.</p>
+
+<h2>MouseWheel management</h2>
+
+<p><code>NumericUpDown</code>'s management of the mouse wheel is, sometimes, really annoying. Suppose you have an application which displays some kind of chart, with a topmost dialog (toolbox) to let the user change some parameters of the graph. In this dialog, the only controls which can keep the focus are <code>NumericUpDown</code> ones:</p>
+
+<p><img height="149" src="img/form.jpg" width="234" /></p>
+
+<p>After your user puts the focus inside one of them, the mouse wheel is captured by the <code>NumericUpDown</code>. When the user wheels to, say, scroll the graph, the effect is that the focused field value is changed; this behavior is really annoying.</p>
+
+<p>A fix could be to kill the <code>WM_MOUSEWHEEL</code> message for the control, but this will kill even &quot;legal&quot; wheelings.</p>
+
+<p>The <code>NumericUpDown</code> has a property which allows <code>WM_MOUSEWHEEL</code> messages to pass only if the mouse pointer is over the control, making sure that the user is wheeling to change the control value.</p>
+
+<p>This is done by keeping track of the mouse state in the <code>MouseEnter</code>-<code>MouseLeave</code> events, then killing <code>WM_MOUSEWHEEL</code> messages accordingly.</p>
+
+<p><img height="155" src="img/property.jpg" width="416" /></p>
+
+<h2>How to use the control</h2>
+
+<p>Simply include <em>NumericUpDownEx.vb</em> in your project and use the control like you'll do with the standard <code>NumericUpDown</code>. If you have a C# project, you could reference the <em>CoolSoft.NumericUpDownEx.dll</em> assembly or, better, try to convert the code to C# (it should not be so difficult). I could provide a C# version upon request.</p>
+
+
+<h2>Updates</h2>
+<h3>v1.5 (28/Mar/2014) </h3>
+<ul>
+  <li>Removed reflection code, now underlying controls are retrieved with managed code only (thanks to
+    <a href="http://www.codeproject.com/script/Membership/View.aspx?mid=4800680">JWhattam</a> for his suggestion)
+  </li>
+</ul>
+<h3>v1.4 (17/Dec/2012) </h3>
+<ul>
+  <li>New option to show up/down buttons when the control has focus (regardless of mouseover), thanks to Fred Kreppert for
+  <a href="http://www.codeproject.com/Messages/4453157/Addtional-feature-display-updown-buttons-with-focu.aspx">his suggestion</a>
+  </li>
+</ul>
+<h3>v1.3 (15/Mar/2010):</h3>
+<ul>
+<li>Added new <code>WrapValue</code> property: when set, if Maximum is reached during an increment,
+Value will restart from Minimum (and viceversa)<br />
+(feature suggested by YosiHakel <a href="http://www.codeproject.com/script/Membership/View.aspx?mid=4241627">here</a>)</li>
+<li>Cleaned up the C# version</li>
+</ul>
+<h3>v1.2 (10/Feb/2010):</h3>
+<ul>
+<li>Added two new events <code>BeforeValueDecrement</code> and <code>BeforeValueIncrement</code>, as suggested by <a href="http://www.codeproject.com/Messages/3057776/Little-improvement.aspx">andrea@gmi</a>. This will allow to give different increment/decrement depending on current control value</li>
+<li>Added a C# version of the control to the ZIP</li>
+</ul>
+
+</body>
+</html>
