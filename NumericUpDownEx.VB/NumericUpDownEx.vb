@@ -1,5 +1,5 @@
 ' ===================================================================== '
-' NumericUpDownEx - v.1.5                                               '
+' NumericUpDownEx - v.1.6                                               '
 ' ===================================================================== '
 ' Author:   Claudio Nicora                                              '
 ' WebSite:  http://coolsoft.altervista.org/numericupdownex              '
@@ -173,6 +173,8 @@ Public Class NumericUpDownEx
         WhenFocus
         ''' <summary>UpDownButtons are visible when control has focus or mouse is over the control</summary>
         WhenFocusOrMouseOver
+        ''' <summary>UpDownButtons are never visible</summary>
+        Never
     End Enum
 
 
@@ -328,6 +330,8 @@ Public Class NumericUpDownEx
                 newVisible = _haveFocus
             Case ShowUpDownButtonsMode.WhenFocusOrMouseOver
                 newVisible = _haveFocus OrElse _mouseOver
+            Case ShowUpDownButtonsMode.Never
+                newVisible = False
             Case Else
                 newVisible = True
         End Select

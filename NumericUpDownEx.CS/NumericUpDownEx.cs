@@ -1,5 +1,5 @@
 // ============================================================================ '
-// NumericUpDownEx - v.1.5                                                      '
+// NumericUpDownEx - v.1.6                                                      '
 // ============================================================================ '
 // Author:   Claudio Nicora                                                     '
 // WebSite:  http://coolsoft.altervista.org/numericupdownex                     '
@@ -183,7 +183,9 @@ namespace CoolSoft.UI
             /// <summary>UpDownButtons are visible only when control has focus</summary>
             WhenFocus,
             /// <summary>UpDownButtons are visible when control has focus or mouse is over it</summary>
-            WhenFocusOrMouseOver
+            WhenFocusOrMouseOver,
+            /// <summary>UpDownButtons are never visible</summary>
+            Never,
         }
 
         /// <summary>
@@ -350,6 +352,9 @@ namespace CoolSoft.UI
                     break;
                 case ShowUpDownButtonsMode.WhenFocusOrMouseOver:
                     newVisible = _mouseOver | _haveFocus;
+                    break;
+                case ShowUpDownButtonsMode.Never:
+                    newVisible = false;
                     break;
                 default:
                     newVisible = true;
